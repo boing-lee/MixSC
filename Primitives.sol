@@ -7,6 +7,14 @@ library Primitives {
     using BN128 for BN128.G1Point;
     using BN128 for uint256;
 
+    struct TwistedElgammalParams {
+        BN128.G1Point g;
+        BN128.G1Point h;
+        uint256 k;
+        uint256 v;
+        BN128.G1Point pk;
+    }
+
     // function commit(
     //     BN128.G1Point memory g,
     //     uint256 v,
@@ -20,11 +28,12 @@ library Primitives {
 
 //---------------------------------TwistedElgammal加密(用于替换上方的commit)-----------------------------------------
     function TwistedElgammal(
-        BN128.G1Point memory g,//不要忘记可以在SDCTSetup中拿取，应该不需要传参了
-        BN128.G1Point memory h,//不要忘记可以在SDCTSetup中拿取，应该不需要传参了
-        uint256 r,
-        uint256 m,
-        BN128.G1Point memory pk
+        // BN128.G1Point memory g,//不要忘记可以在SDCTSetup中拿取，应该不需要传参了
+        // BN128.G1Point memory h,//不要忘记可以在SDCTSetup中拿取，应该不需要传参了
+        // uint256 r,//随机数
+        // uint256 m,//明文
+        // BN128.G1Point memory pk//公钥
+        TwistedElgammalParams memory twElParams
     ) public view returns (BN128.G1Point memory, BN128.G1Point memory) {
         // BN128.G1Point memory A = pk.mul(a);
         // BN128.G1Point memory tmp = g.mul(a);
@@ -34,8 +43,8 @@ library Primitives {
         // uint256 z2 = b.add(e.mul(v));
         // return (A,B,z1,z2);
 
-        BN128.G1Point memory X = pk.mul(r);
-        BN128.G1Point memory Y = g.mul(r).add(h.mul(m));
+        BN128.G1Point memory X = twElParams.pk.mul(twElParams.k);
+        BN128.G1Point memory Y = twElParams.g.mul(twElParams.k).add(twElParams.h.mul(twElParams.v));
         return (X, Y);
 
     }

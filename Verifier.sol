@@ -198,13 +198,19 @@ library Verifier {
         BN128.G1Point[2] memory cmp;
         
         (left[0], left[1]) = GenerateSigmaProofLeft(commits1, commits2, aux, f_i_, proof, challenge_x);
-
+        Primitives.TwistedElgammalParams memory twElParams;
+        twElParams.g = aux.g;
+        twElParams.h = aux.h[0];
+        twElParams.k = proof.z;
+        twElParams.v = 0;
+        twElParams.pk = pk;
         (cmp[0], cmp[1]) = Primitives.TwistedElgammal(
-            aux.g,
-            aux.h[0],
-            0,
-            proof.z,
-            pk
+            // aux.g,
+            // aux.h[0],
+            // 0,
+            // proof.z,
+            // pk
+            twElParams
         );
 
         if (!left[0].eq(cmp[0]) || !(left[1].eq(cmp[1]))) return false;

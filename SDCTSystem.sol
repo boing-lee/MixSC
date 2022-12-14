@@ -254,6 +254,7 @@ contract SDCTSystem {
         if (uint256(tokenAddr) == 0) {
             // use msg.value to calculate amount instead.
             sdctAmount = tokenConverter.convertToSDCT(tokenAddr, msg.value);
+            
         } else {
             require(msg.value == 0, "deposit token don't receive eth");
 

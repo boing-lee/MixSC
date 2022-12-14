@@ -1,4 +1,5 @@
 pragma solidity >= 0.5.0 < 0.6.0;
+pragma experimental ABIEncoderV2;
 import "./library/BN128.sol";
 
 contract SDCTSetup {
@@ -87,4 +88,11 @@ contract SDCTSetup {
     uint scalar = uint(keccak256(abi.encodePacked(s))).mod();
     return gBase.mul(scalar);
   }
+
+    // generatePointByString
+  function generatePointByStringForTest(string memory s) public view returns(BN128.G1Point memory) {
+    uint scalar = uint(keccak256(abi.encodePacked(s))).mod();
+    return gBase.mul(scalar);
+  }
+
 }

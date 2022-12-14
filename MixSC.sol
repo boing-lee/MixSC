@@ -4,9 +4,12 @@ pragma experimental ABIEncoderV2;
 import "./library/BN128.sol";
 import "./SDCTSystem.sol";
 import "./Verifier.sol";
+import "./library/SafeMath.sol";
 contract MixSC{
     using BN128 for BN128.G1Point;
     using BN128 for uint256;
+    using SafeMath for uint256;
+    event VerifyTokenEvent(BN128.G1Point g1, BN128.G1Point g2);
 
     //定义数据结构部分
     address owner;
@@ -17,15 +20,24 @@ contract MixSC{
     struct EscrowStatement {
         SDCTSystem.CT cesc;
         BN128.G1Point token;
-        uint256 mu;
+        BN128.G1Point mu;
     }
 
-        struct RedeemStatement {
+    struct RedeemStatement {
         SDCTSystem.CT cred;
         //BN128.G1Point token;
         //uint256 mu;
     }
 
+    struct Proof_Escrow {
+        BN128.G1Point pk;
+        uint256 tokenKind;
+        BN128.G1Point token;
+        BN128.G1Point mu;
+        BN128.G1Point R;
+        BN128.G1Point GBase;
+        uint256 z;
+    }
     // struct TwEGProof {
     //     BN128.G1Point pk;
     //     BN128.G1Point X;
@@ -83,43 +95,46 @@ contract MixSC{
     //mu方便提币时的零知识证明
     function processEscrow(
         SDCTSystem.CT memory cesc,
-        BN128.G1Point memory pk,
-        uint256 tokenKind,
-        BN128.G1Point memory token,
-        uint256 mu,
-        BN128.G1Point memory R,
-        BN128.G1Point memory GBase,
-        uint256 z
+        // BN128.G1Point memory pk,
+        // uint256 tokenKind,
+        // BN128.G1Point memory token,
+        // BN128.G1Point memory mu,
+        // BN128.G1Point memory R,
+        // BN128.G1Point memory GBase,
+        // uint256 z
+        Proof_Escrow memory proofEscrow
     ) public payable {
         
         //1. 验证该托管交易在PGC中是否有效，未实现。。。
         EscrowStatement memory statement;
         statement.cesc = cesc;
-        statement.token = token;
-        statement.mu = mu;
+        statement.token = proofEscrow.token;
+        statement.mu = proofEscrow.mu;
 
         //2. 验证token, 是否都在智能合约公开状态Epool中唯一，验证token形式的正确性，即使用schnorr
         //proof中的verifier验证用户确实知道token关于生成元f的离散对数
-        require(!esc_token_pool[keccak256(abi.encode(token))] 
-        && !esc_mu_pool[keccak256(abi.encode(mu))] && verifyToken(token,R,GBase, z)==1, "Validation failed");
+        require(!esc_token_pool[keccak256(abi.encode(proofEscrow.token))] 
+        && !esc_mu_pool[keccak256(abi.encode(proofEscrow.mu))],"Duplicate parameter token or mu!!!" );
+        require(verifyToken(proofEscrow.token,proofEscrow.R,proofEscrow.GBase, proofEscrow.z)==1, "Validation failed!!!");
+        // require(verifyToken(proofEscrow.token,proofEscrow.R,proofEscrow.GBase, proofEscrow.z)==1, "Validation failed!!!");
         //3. 如果有效，便将托管交易 中的关键信息 和token， 放在公开的列表Epool中，即更新公开状态
         esc_pool.push(statement);
-        esc_token_pool[keccak256(abi.encodePacked(token.X, token.Y))] = true;
-        esc_mu_pool[keccak256(abi.encodePacked(mu))] = true;
+        esc_token_pool[keccak256(abi.encodePacked(proofEscrow.token.X, proofEscrow.token.Y))] = true;
+        esc_mu_pool[keccak256(abi.encodePacked(proofEscrow.mu.X, proofEscrow.mu.Y))] = true;
 
         //4. 扣除托管用户账户的余额
         // acc[msg.sender] = acc[msg.sender].sub(cesc);
-       
+       {
         SDCTSystem.CT memory tmpUpdatedBalance = sdctSystem.getBalanceCanSpentInternal(
-            pk.X,
-            pk.Y,
-            tokenKind
+            proofEscrow.pk.X,
+            proofEscrow.pk.Y,
+            proofEscrow.tokenKind
         );
         tmpUpdatedBalance.X = tmpUpdatedBalance.X.add(cesc.X.neg());
         tmpUpdatedBalance.Y = tmpUpdatedBalance.Y.add(cesc.Y.neg());
         
-        sdctSystem.rolloverAndUpdate(tmpUpdatedBalance, pk.X, pk.Y, tokenKind);
-        
+        sdctSystem.rolloverAndUpdate(tmpUpdatedBalance, proofEscrow.pk.X, proofEscrow.pk.Y, proofEscrow.tokenKind);
+       }
     }
 
     //验证Token
@@ -129,11 +144,16 @@ contract MixSC{
         BN128.G1Point memory R, //r * G
         BN128.G1Point memory GBase,
         uint256 z //
-    ) private view returns(uint32) {
+    ) private returns(uint32) {
         //schnorr proof verifier
         uint256 c = uint256(keccak256(abi.encodePacked(token.X,token.Y, R.X, R.Y))).mod();
-        BN128.G1Point memory g1 = GBase.mul(z);
+        BN128.G1Point memory g1 = GBase.mul(z.mod());
+        g1.X = g1.X.mod();
+        g1.Y = g1.Y.mod();
         BN128.G1Point memory g2 = token.mul(c).add(R);
+        g2.X = g2.X.mod();
+        g2.Y = g2.Y.mod();
+        emit VerifyTokenEvent(g1,g2);
         if(g1.eq(g2)) {
             return 1;
         } else {
@@ -168,7 +188,7 @@ contract MixSC{
         BN128.G1Point[] memory clist1 = new BN128.G1Point[](esc_pool.length);
         BN128.G1Point[] memory clist2 = new BN128.G1Point[](esc_pool.length);
         for (uint256 i = 0; i < esc_pool.length; i++) {
-            clist1[i] = cred.X.add(esc_pool[i].cesc.X.mul(esc_pool[i].mu).neg());
+            clist1[i] = cred.X.add(esc_pool[i].cesc.X.add(esc_pool[i].mu).neg());
             clist2[i] = cred.Y.add(esc_pool[i].cesc.Y.neg());
         }
         if (!Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,pk)) {
