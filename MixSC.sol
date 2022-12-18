@@ -55,6 +55,22 @@ contract MixSC{
     EscrowStatement[] esc_pool;
     RedeemStatement[] red_pool;
 
+function getEscPool() public view returns(EscrowStatement[] memory) {
+    return esc_pool;
+}
+
+function getEscPoolLength() public view returns(uint256) {
+    return esc_pool.length;
+}
+
+function getEscPoolItemByIndex(
+    uint256 index
+) public view returns(EscrowStatement memory) {
+    require(index>=0 && index < esc_pool.length, "Invalid index value!!!");
+    return esc_pool[index];
+}
+
+
     //定义仅管理员操作修饰器
     modifier onlyOwner() {
         require(owner == msg.sender, "only owner!");
@@ -171,37 +187,69 @@ contract MixSC{
     //     uint256 z1;
     //     uint256 z2;
     // }
-    function processredeem(
-        SDCTSystem.CT memory cred, //是提币交易中的密文
-        uint256 token,//表示该山寨币对应的真实币种
+
+    struct ProcessRedeemInput {
+        SDCTSystem.CT cred; //是提币交易中处理后的密文，已经无法使用
+        uint256 token;//表示该山寨币对应的真实币种
+        BN128.G1Point pk;
+        uint256 z1; //twisted EL验证使用
+        uint256 z2;
+        BN128.G1Point A;
+        BN128.G1Point B;
+        uint256 v;
+        uint256 k;
+
+    }
+
+
+    function processRedeem(
+        // SDCTSystem.CT memory cred, //是提币交易中的密文
+        // uint256 token,//表示该山寨币对应的真实币种
         Verifier.SigmaProof memory proof_format,//密文格式正确性的证明
         Verifier.SigmaAuxiliaries memory aux_format,
-        BN128.G1Point memory pk,
-        uint256 z1, //twisted EL验证使用
-        uint256 z2
+        ProcessRedeemInput memory input
+        // BN128.G1Point memory pk,
+        // uint256 z1, //twisted EL验证使用
+        // uint256 z2
     ) public payable {
         //1. 验证该提币请求是否有效，验证密文形式的正确性，参考PGC_p32_Fig.3
         // SDCTSystem.CT memory cred, TwEGProof memory proof_format
-        uint32 flag1 = verifyFormat(cred, proof_format,z1,z2,pk);//验证密文格式是否有效
-        if(flag1 != 1) return;
+        uint32 flag1 = verifyFormat(input.cred, input);//验证密文格式是否有效
+        require(flag1 == 1, "verifyFormat False!!!!");
+        // if(flag1 != 1) return;
         //开始预处理并进行一次ooomp验证,感觉有点问题
         BN128.G1Point[] memory clist1 = new BN128.G1Point[](esc_pool.length);
         BN128.G1Point[] memory clist2 = new BN128.G1Point[](esc_pool.length);
         for (uint256 i = 0; i < esc_pool.length; i++) {
-            clist1[i] = cred.X.add(esc_pool[i].cesc.X.add(esc_pool[i].mu).neg());
-            clist2[i] = cred.Y.add(esc_pool[i].cesc.Y.neg());
+            clist1[i] = input.cred.X.add(esc_pool[i].cesc.X.add(esc_pool[i].mu).neg());
+            clist2[i] = input.cred.Y.add(esc_pool[i].cesc.Y.neg());
         }
-        if (!Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,pk)) {
-            // emit RedeemResult(false);
-            return;
-        }
+
+        require(Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,input.pk), "verifySigmaProof MixSC line 228 False!!!");
+        require(false, "verifySigmaProof Success!!!");
+        // if (!Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,input.pk)) {
+        //     // emit RedeemResult(false);
+        //     return;
+        // }
         
-        RedeemStatement memory statement;
-        statement.cred = cred;
-        red_pool.push(statement);
-        //添加对应的山寨币密文   648行
+        // RedeemStatement memory statement;
+        // statement.cred = input.cred;
+        // red_pool.push(statement);
+        
+        // Primitives.TwistedElgammalParams memory twElParams;
+        // SDCTSystem.CT memory cred;
+        // {
+        //     twElParams.g = BN128.G1Point(sdctSetup.getG()[0],sdctSetup.getG()[1]);
+        //     twElParams.h = BN128.G1Point(sdctSetup.getH()[0],sdctSetup.getH()[1]);
+        //     twElParams.k = input.k;
+        //     twElParams.v = input.v;
+        //     twElParams.pk = input.pk;
+        
+        //     (cred.X, cred.Y) = Primitives.TwistedElgammal(twElParams);
+        // }
+
         //先把System中的该方法改为public(暂时不考虑接口方法可见度的安全性)
-        sdctSystem.toBalanceOrPending(cred, pk.X, pk.Y, token);
+        // sdctSystem.toBalanceOrPending(cred, input.pk.X, input.pk.Y, input.token);
 
     }
  
@@ -214,11 +262,11 @@ contract MixSC{
 //     }
     //ToDo...验证TwistedElGammal密文格式是否有效
     //参考了PGC代码SDCTVerifier 535行函数的大致内容
-    function verifyFormat(SDCTSystem.CT memory cred, Verifier.SigmaProof memory proof_format,uint256 z1, uint256 z2,BN128.G1Point memory pk) public returns (uint32) {
+    function verifyFormat(SDCTSystem.CT memory cred, ProcessRedeemInput memory input) public returns (uint32) {
         //验证成功返回1
-        uint256 e = uint256(keccak256(abi.encode(proof_format.r1Proof.A, proof_format.B))).mod();
-        BN128.G1Point memory tmp = pk.mul(z1);
-        BN128.G1Point memory actual = cred.X.mul(e).add(proof_format.r1Proof.A);
+        uint256 e = uint256(keccak256(abi.encode(input.A.X,input.A.Y, input.B.X, input.B.Y))).mod();
+        BN128.G1Point memory tmp = input.pk.mul(input.z1);
+        BN128.G1Point memory actual = cred.X.mul(e).add(input.A);
         if (!tmp.eq(actual)) {
             return 0;
         }
@@ -230,8 +278,8 @@ contract MixSC{
         h.X = sdctSetup.getH()[0];
         h.Y = sdctSetup.getH()[1];
         
-        tmp = g.mul(z1).add(h.mul(z2));
-        actual = proof_format.B.add(cred.Y.mul(e));
+        tmp = g.mul(input.z1).add(h.mul(input.z2));
+        actual = input.B.add(cred.Y.mul(e));
         if (!tmp.eq(actual)) {
             return 0;
         }

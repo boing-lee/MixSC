@@ -21,8 +21,10 @@ library Verifier {
         uint256 n;
         uint256 m;
         BN128.G1Point B_commit;
-        BN128.G1Point g;
-        BN128.G1Point[] h;
+        BN128.G1Point g; //setUp中的Tw加密原始   ek
+        BN128.G1Point h;
+        BN128.G1Point g_new; //用于commitBits   ck
+        BN128.G1Point[] hs;
     }
 
     struct SigmaProof {
@@ -36,8 +38,10 @@ library Verifier {
     struct SigmaAuxiliaries {
         uint256 n;
         uint256 m;
-        BN128.G1Point g;
-        BN128.G1Point[] h;
+        BN128.G1Point g; //setUp中的Tw加密原始   ek
+        BN128.G1Point h;
+        BN128.G1Point g_new; //用于commitBits   ck
+        BN128.G1Point[] hs;
     }
 
     function verifyR1Proof(
@@ -68,27 +72,37 @@ library Verifier {
             if (proof.f[j] == challenge_x) return false;
         }
         uint256 cnt = 0;
-        for (uint256 j = 0; j < aux.m; j++) {
-            f_out[cnt] = 0;
-            cnt++;
+        // for (uint256 j = 0; j < aux.m; j++) {
+        //     f_out[cnt] = 0;
+        //     cnt++;
+        //     uint256 tmp = 0;
+        //     uint256 k = aux.n - 1;
+        //     for (uint256 i = 0; i < k; i++) {
+        //         tmp = tmp.add(proof.f[j * k + i]);
+        //         f_out[cnt] = proof.f[j * k + i];
+        //         cnt++;
+        //     }
+        //     f_out[j * aux.n] = challenge_x.sub(tmp);
+        // }
+
+        for(uint256 j = 0; j < aux.m; j++) {
             uint256 tmp = 0;
-            uint256 k = aux.n - 1;
-            for (uint256 i = 0; i < k; i++) {
-                tmp = tmp.add(proof.f[j * k + i]);
-                f_out[cnt] = proof.f[j * k + i];
-                cnt++;
+            for(uint256 i = 1; i < aux.n; i++) {
+                tmp = tmp.add(proof.f[j * aux.n  + i]);
+                f_out[j*aux.n+i] = proof.f[j * aux.n  + i];
             }
-            f_out[j * aux.n] = challenge_x.sub(tmp);
+            f_out[j*aux.n] = challenge_x.sub(tmp);
         }
 
         BN128.G1Point memory one = Primitives.commitBits(
-            aux.g,
-            aux.h,
+            aux.g_new,
+            aux.hs,
             f_out,
             proof.zA
         );
 
         BN128.G1Point memory cmp = aux.B_commit.mul(challenge_x).add(proof.A);
+        require(one.eq(cmp), "Verifier line 96!!! ");
         if (!one.eq(cmp)) return false;
 
         uint256[] memory f_outprime = new uint256[](f_out.length);
@@ -96,13 +110,14 @@ library Verifier {
             f_outprime[i] = f_out[i].mul(challenge_x.sub(f_out[i]));
         }
         BN128.G1Point memory two = Primitives.commitBits(
-            aux.g,
-            aux.h,
+            aux.g_new,
+            aux.hs,
             f_outprime,
             proof.zC
         );
 
         cmp = proof.C.mul(challenge_x).add(proof.D);
+        require(two.eq(cmp), "Verifier line 111!!! ");
         if (!two.eq(cmp)) return false;
 
         return true;
@@ -116,19 +131,21 @@ library Verifier {
         BN128.G1Point memory pk
     ) internal view returns (bool) {
         uint256 challenge_x;
-        uint256 N = commits1.length;
-        uint256[] memory f = new uint256[](N);
+        uint256 N = commits1.length; //f用一维数组表示二维数组
+        uint256[] memory f = new uint256[](aux.n.mul(aux.m));
+        R1Auxiliaries memory r1aux;
         {
-            R1Auxiliaries memory r1aux;
             r1aux.n = aux.n;
             r1aux.m = aux.m;
             r1aux.B_commit = proof.B;
             r1aux.g = aux.g;
-            r1aux.h = aux.h;
+            r1aux.h = r1aux.h;
+            r1aux.g_new = aux.g_new;
+            r1aux.hs = aux.hs;
             if (!verifyR1Proof(proof.r1Proof, r1aux, true)) return false;
 
             BN128.G1Point[] memory group_elements = new BN128.G1Point[](
-                proof.Gk1.length + 4
+                proof.Gk1.length + proof.Gk2.length + 4
             );
             group_elements[0] = proof.r1Proof.A;
             group_elements[1] = proof.B;
@@ -137,36 +154,18 @@ library Verifier {
             for (uint256 i = 0; i < proof.Gk1.length; i++) {
                 group_elements[i + 4] = proof.Gk1[i];
             }
-            challenge_x = Primitives.generateChallenge(group_elements);
-            if (!verifyR1Final(proof.r1Proof, r1aux, challenge_x, f))
-                return false;
-        }
-
-        //新添加代码块，主要为GK2,上边代码块为GK1
-        {
-            R1Auxiliaries memory r1aux;
-            r1aux.n = aux.n;
-            r1aux.m = aux.m;
-            r1aux.B_commit = proof.B;
-            r1aux.g = aux.g;
-            r1aux.h = aux.h;
-            if (!verifyR1Proof(proof.r1Proof, r1aux, true)) return false;
-
-            BN128.G1Point[] memory group_elements = new BN128.G1Point[](
-                proof.Gk2.length + 4
-            );
-            group_elements[0] = proof.r1Proof.A;
-            group_elements[1] = proof.B;
-            group_elements[2] = proof.r1Proof.C;
-            group_elements[3] = proof.r1Proof.D;
             for (uint256 i = 0; i < proof.Gk2.length; i++) {
-                group_elements[i + 4] = proof.Gk2[i];
+                group_elements[proof.Gk1.length + i + 4] = proof.Gk2[i];
             }
             challenge_x = Primitives.generateChallenge(group_elements);
+            //require(verifyR1Final(proof.r1Proof, r1aux, challenge_x, f), "Verifier line 152!!! ");
             if (!verifyR1Final(proof.r1Proof, r1aux, challenge_x, f))
                 return false;
         }
 
+        //新添加代码块，主要为GK2,上边代码块为GK1(更新：以上部分将GK1和GK2合并不再需要单独验证)
+    
+        //生成f_i_
         uint256[] memory f_i_ = new uint256[](N);
         {
             for (uint256 i = 0; i < N; i++) {
@@ -200,7 +199,7 @@ library Verifier {
         (left[0], left[1]) = GenerateSigmaProofLeft(commits1, commits2, aux, f_i_, proof, challenge_x);
         Primitives.TwistedElgammalParams memory twElParams;
         twElParams.g = aux.g;
-        twElParams.h = aux.h[0];
+        twElParams.h = aux.h;
         twElParams.k = proof.z;
         twElParams.v = 0;
         twElParams.pk = pk;
@@ -213,7 +212,12 @@ library Verifier {
             twElParams
         );
 
-        if (!left[0].eq(cmp[0]) || !(left[1].eq(cmp[1]))) return false;
+        require(left[0].eq(cmp[0]), "Verifier line 237!!! ");
+        require(left[1].eq(cmp[1]), "Verifier line 238!!! ");
+        // require((left[0].eq(cmp[0])) && (left[1].eq(cmp[1])), "Verifier line 227!!! ");
+        if (!(left[0].eq(cmp[0])) || !(left[1].eq(cmp[1]))) return false;
+        
+        
         return true;
     }
 
@@ -230,11 +234,16 @@ library Verifier {
         {
             BN128.G1Point memory t1 = Primitives.multiExp(commits1, f_i_);
             BN128.G1Point memory t2 = BN128.zero();
-            uint256 x_k = 1;
+            // uint256 x_k = 1;
+            // for (uint256 k = 0; k < aux.m; k++) {
+            //     t2 = t2.add(proof.Gk1[k].mul(x_k.neg()));
+            //     x_k = x_k.mul(challenge_x);
+            // }
+
             for (uint256 k = 0; k < aux.m; k++) {
-                t2 = t2.add(proof.Gk1[k].mul(x_k.neg()));
-                x_k = x_k.mul(challenge_x);
+                t2 = t2.add(proof.Gk1[k].mul(challenge_x.modExp(k)).neg() );
             }
+
             left1 = t1.add(t2);
         }
 
@@ -242,11 +251,15 @@ library Verifier {
         {
             BN128.G1Point memory t3 = Primitives.multiExp(commits2, f_i_);
             BN128.G1Point memory t4 = BN128.zero();
-            uint256 x_k = 1;
+            // uint256 x_k = 1;
+            // for (uint256 k = 0; k < aux.m; k++) {
+            //     t4 = t4.add(proof.Gk2[k].mul(x_k.neg()));
+            //     x_k = x_k.mul(challenge_x);
+            // }
             for (uint256 k = 0; k < aux.m; k++) {
-                t4 = t4.add(proof.Gk2[k].mul(x_k.neg()));
-                x_k = x_k.mul(challenge_x);
+                t4 = t4.add(proof.Gk2[k].mul(challenge_x.modExp(k)).neg() );
             }
+
             left2 = t3.add(t4);
         }
         return (left1, left2);
