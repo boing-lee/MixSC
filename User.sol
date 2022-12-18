@@ -83,7 +83,7 @@ contract User{
         //确定随机数td,确定一个新的生成元f
         BN128.G1Point memory f = gBase.mul(uint(keccak256(abi.encodePacked(crEscParams.randomString))).mod());
         // BN128.G1Point memory f; //还没有设置值。。。。TODO
-        //num[0] td
+        //
         //num[1] r
         //num[2] c
         //num[3] z
@@ -93,7 +93,7 @@ contract User{
         num[1] = uint(keccak256(abi.encodePacked(block.timestamp,block.difficulty, block.timestamp, msg.sender))).mod();
         BN128.G1Point memory R = f.mul(num[1]);
         num[2] = uint256(keccak256(abi.encodePacked(token.X,token.Y, R.X, R.Y))).mod();
-        num[3] = uint(num[1] + (num[2] * crEscParams.td).mod()).mod();
+        num[3] = uint(num[1].add( (num[2].mul(crEscParams.td).mod() ) )).mod();
         
 
         MixSC.Proof_Escrow memory proofEscrow;
