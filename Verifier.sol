@@ -57,6 +57,7 @@ library Verifier {
             group_elements[3] = proof.D;
             uint256 challenge_x = Primitives.generateChallenge(group_elements);
             uint256[] memory f_out = new uint256[](aux.n * aux.m);
+            
             return verifyR1Final(proof, aux, challenge_x, f_out);
         }
         return true;
@@ -71,19 +72,6 @@ library Verifier {
         for (uint256 j = 0; j < proof.f.length; j++) {
             if (proof.f[j] == challenge_x) return false;
         }
-        uint256 cnt = 0;
-        // for (uint256 j = 0; j < aux.m; j++) {
-        //     f_out[cnt] = 0;
-        //     cnt++;
-        //     uint256 tmp = 0;
-        //     uint256 k = aux.n - 1;
-        //     for (uint256 i = 0; i < k; i++) {
-        //         tmp = tmp.add(proof.f[j * k + i]);
-        //         f_out[cnt] = proof.f[j * k + i];
-        //         cnt++;
-        //     }
-        //     f_out[j * aux.n] = challenge_x.sub(tmp);
-        // }
 
         for(uint256 j = 0; j < aux.m; j++) {
             uint256 tmp = 0;
@@ -93,6 +81,7 @@ library Verifier {
             }
             f_out[j*aux.n] = challenge_x.sub(tmp);
         }
+
 
         BN128.G1Point memory one = Primitives.commitBits(
             aux.g_new,
@@ -123,13 +112,22 @@ library Verifier {
         return true;
     }
 
+
+
+   event verifySigmaProofLast(
+            uint256[] f_i_, Primitives.TwistedElgammalParams twElParams,
+            BN128.G1Point[2] left, BN128.G1Point[2] cmp
+        );
+
+event verifySigmaProofIIII(uint256[] I,uint256[] f_i_);
+event verifySigmaProoff_out(uint256[] f);
     function verifySigmaProof(
         BN128.G1Point[] memory commits1,
         BN128.G1Point[] memory commits2,
         SigmaProof memory proof,
         SigmaAuxiliaries memory aux,
         BN128.G1Point memory pk
-    ) internal view returns (bool) {
+    ) internal  returns (bool) {
         uint256 challenge_x;
         uint256 N = commits1.length; //f用一维数组表示二维数组
         uint256[] memory f = new uint256[](aux.n.mul(aux.m));
@@ -161,6 +159,8 @@ library Verifier {
             //require(verifyR1Final(proof.r1Proof, r1aux, challenge_x, f), "Verifier line 152!!! ");
             if (!verifyR1Final(proof.r1Proof, r1aux, challenge_x, f))
                 return false;
+
+            //emit verifySigmaProoff_out(f);
         }
 
         //新添加代码块，主要为GK2,上边代码块为GK1(更新：以上部分将GK1和GK2合并不再需要单独验证)
@@ -168,8 +168,9 @@ library Verifier {
         //生成f_i_
         uint256[] memory f_i_ = new uint256[](N);
         {
+            uint256[] memory I;
             for (uint256 i = 0; i < N; i++) {
-                uint256[] memory I = Primitives.convertToNal(i, aux.n, aux.m);
+                I = Primitives.convertToNal(i, aux.n, aux.m); //变为i的n进制
                 uint256 f_i = 1;
                 for (uint256 j = 0; j < aux.m; j++) {
                     f_i = f_i.mul(f[j * aux.n + I[j]]);
@@ -177,9 +178,6 @@ library Verifier {
                 f_i_[i] = f_i;
             }
         }
-
-        //BN128.G1Point memory left1 = GenerateSigmaProofLeft(commits,aux,f_i_,proof.Gk1,challenge_x);
-        
 
         // BN128.G1Point memory cmp = Primitives.commit(
         //     aux.g,
@@ -212,11 +210,12 @@ library Verifier {
             twElParams
         );
 
+        emit verifySigmaProofLast(f_i_, twElParams ,left, cmp);
+
         require(left[0].eq(cmp[0]), "Verifier line 237!!! ");
         require(left[1].eq(cmp[1]), "Verifier line 238!!! ");
         // require((left[0].eq(cmp[0])) && (left[1].eq(cmp[1])), "Verifier line 227!!! ");
         if (!(left[0].eq(cmp[0])) || !(left[1].eq(cmp[1]))) return false;
-        
         
         return true;
     }
@@ -241,7 +240,7 @@ library Verifier {
             // }
 
             for (uint256 k = 0; k < aux.m; k++) {
-                t2 = t2.add(proof.Gk1[k].mul(challenge_x.modExp(k)).neg() );
+                t2 = t2.add(proof.Gk1[k].mul(challenge_x.modExp(k).neg()  ) );
             }
 
             left1 = t1.add(t2);
@@ -257,7 +256,7 @@ library Verifier {
             //     x_k = x_k.mul(challenge_x);
             // }
             for (uint256 k = 0; k < aux.m; k++) {
-                t4 = t4.add(proof.Gk2[k].mul(challenge_x.modExp(k)).neg() );
+                t4 = t4.add(proof.Gk2[k].mul(challenge_x.modExp(k).neg() ) );
             }
 
             left2 = t3.add(t4);

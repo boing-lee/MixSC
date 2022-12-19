@@ -89,6 +89,8 @@ function getEscPoolItemByIndex(
         owner = msg.sender;
         sdctSetup = SDCTSetup(sdctSetUp_);
         sdctSystem = SDCTSystem(sdctSystem_);
+        // sdctSetup = SDCTSetup(0xb155F29687E28a4992E30D5D7dC870d821bEea99);
+        // sdctSystem = SDCTSystem(0xeD19F971D5fBBe06566DF0a9816F110717775fCA);
     }
 
     //1、绑定eth地址与PGC地址
@@ -201,7 +203,7 @@ function getEscPoolItemByIndex(
 
     }
 
-
+event PrintClist(BN128.G1Point[] clist1, BN128.G1Point[] clist2);
     function processRedeem(
         // SDCTSystem.CT memory cred, //是提币交易中的密文
         // uint256 token,//表示该山寨币对应的真实币种
@@ -224,32 +226,35 @@ function getEscPoolItemByIndex(
             clist1[i] = input.cred.X.add(esc_pool[i].cesc.X.add(esc_pool[i].mu).neg());
             clist2[i] = input.cred.Y.add(esc_pool[i].cesc.Y.neg());
         }
-
+        
+        emit PrintClist(clist1, clist2);
+        
         require(Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,input.pk), "verifySigmaProof MixSC line 228 False!!!");
-        require(false, "verifySigmaProof Success!!!");
+        
+        // require(false, "verifySigmaProof Success!!!");
         // if (!Verifier.verifySigmaProof(clist1, clist2, proof_format, aux_format,input.pk)) {
         //     // emit RedeemResult(false);
         //     return;
         // }
         
-        // RedeemStatement memory statement;
-        // statement.cred = input.cred;
-        // red_pool.push(statement);
+        RedeemStatement memory statement;
+        statement.cred = input.cred;
+        red_pool.push(statement);
         
-        // Primitives.TwistedElgammalParams memory twElParams;
-        // SDCTSystem.CT memory cred;
-        // {
-        //     twElParams.g = BN128.G1Point(sdctSetup.getG()[0],sdctSetup.getG()[1]);
-        //     twElParams.h = BN128.G1Point(sdctSetup.getH()[0],sdctSetup.getH()[1]);
-        //     twElParams.k = input.k;
-        //     twElParams.v = input.v;
-        //     twElParams.pk = input.pk;
+        Primitives.TwistedElgammalParams memory twElParams;
+        SDCTSystem.CT memory cred;
+        {
+            twElParams.g = BN128.G1Point(sdctSetup.getG()[0],sdctSetup.getG()[1]);
+            twElParams.h = BN128.G1Point(sdctSetup.getH()[0],sdctSetup.getH()[1]);
+            twElParams.k = input.k;
+            twElParams.v = input.v;
+            twElParams.pk = input.pk;
         
-        //     (cred.X, cred.Y) = Primitives.TwistedElgammal(twElParams);
-        // }
+            (cred.X, cred.Y) = Primitives.TwistedElgammal(twElParams);
+        }
 
         //先把System中的该方法改为public(暂时不考虑接口方法可见度的安全性)
-        // sdctSystem.toBalanceOrPending(cred, input.pk.X, input.pk.Y, input.token);
+        sdctSystem.toBalanceOrPending(cred, input.pk.X, input.pk.Y, input.token);
 
     }
  

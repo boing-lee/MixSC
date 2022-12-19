@@ -30,7 +30,10 @@ contract SDCTSetup {
   BN128.G1Point public pkauth;
 
   // 在实际使用时, 应该在创建合约时, 由外部系统直接传入. 保证隐私
-  constructor(uint256 pkx, uint256 pky) public {
+  constructor(
+    // uint256 pkx, 
+    // uint256 pky
+    ) public {
     // set h generator.
     // this should be the first step to set which will be used to
     // generate generator point.
@@ -38,8 +41,11 @@ contract SDCTSetup {
     gBase.Y = 2;
 
     // set auth pk.
-    pkauth.X = pkx;
-    pkauth.Y = pky;
+    // pkauth.X = pkx;
+    // pkauth.Y = pky;
+    pkauth.X = 17055543450828620308172476622301403303189927854373814927021664153825542561100;
+    pkauth.Y = 2436283105040896111218960252517862012802529129977374392539008377820407091577;
+
 
     g = generatePointByString("g generator of twisted elg");
     h = generatePointByString("h generator of twisted elg");

@@ -114,30 +114,6 @@ contract User{
         return (cesc, proofEscrow);
     }
 
-// //验证Token
-//     //采用非交互的schnorr协议
-//     function verifyToken(
-//         BN128.G1Point memory token,//token当成PK公钥来看
-//         BN128.G1Point memory R, //r * G
-//         BN128.G1Point memory GBase,
-//         uint256 z //
-//     ) private returns(uint256) {
-//         //schnorr proof verifier
-//         uint256 c = uint256(keccak256(abi.encodePacked(token.X,token.Y, R.X, R.Y))).mod();
-//         BN128.G1Point memory g1 = GBase.mul(z);
-//         BN128.G1Point memory g2 = token.mul(c).add(R);
-//         emit VerifyTokenEvent(g1,g2);
-//         if(g1.eq(g2)) {
-//             return 1;
-//         } else {
-//             return 0;
-//         }
-//     }
-
-
-
-
-
 
     function generateMu(BN128.G1Point memory pke, BN128.G1Point memory pkr, uint256 k) internal returns(BN128.G1Point memory) {
         return pkr.add(pke.neg()).mul(k);
@@ -170,6 +146,7 @@ contract User{
         uint256[] delta;
         BN128.G1Point[] Gk1;
         BN128.G1Point[] Gk2;
+        uint256[] a; //随机数矩阵a
     }
 
     struct RequestRedeemInput {
@@ -198,6 +175,7 @@ contract User{
     event RequestRedeemStep2(RedeemProofStep2 rps);
     event RequestRedeemStep3_1(AuxRedeem2 auxRedeem2, AuxprocessRedeem auxProcessRed);
     event RequestRedeemStep3_2(BN128.G1Point[] group_elements, uint256 challenge_x);
+    event PrintClist(BN128.G1Point[] clist1, BN128.G1Point[] clist2);
     function RequestRedeem(
         // SDCTSystem.CT memory cesc,
         // uint256 k,//escorw中用的随机数
@@ -232,13 +210,13 @@ contract User{
             auxRedeem1.mu = statement.mu;
             auxRedeem1.l = i;
 
-             //获取l的二进制长度m
+             //获取N的二进制长度m
             auxRedeem1.m = Primitives.getMi(len);
             auxRedeem1.n = 2;
         }
 
 
-        emit RequestRedeemAuxRedeem1(auxRedeem1);
+        //emit RequestRedeemAuxRedeem1(auxRedeem1);
        
 
         // SDCTSystem.CT memory tmpCesc;
@@ -254,7 +232,7 @@ contract User{
         twElParams.v = 0;
         twElParams.pk = redInput.pkr;
 
-        emit RequestRedeemPrint("step1 near 252 is OK");
+        //emit RequestRedeemPrint("step1 near 252 is OK");
 
         // SDCTSystem.CT memory tmpCred;
         (auxRedeem1.tmpCred.X, auxRedeem1.tmpCred.Y) = Primitives.TwistedElgammal(twElParams);
@@ -277,12 +255,12 @@ contract User{
             rps.z1 = auxRedeem1.a.add(e.mul(auxRedeem1.r)).mod();
             rps.z2 = auxRedeem1.b.add(e.mul(redInput.v)).mod();
         }
-        emit RequestRedeemStep2(rps);
+        //emit RequestRedeemStep2(rps);
         emit RequestRedeemPrint("step2 near 277 is OK");
 
 
         // //第三步，生成提币合法性证明pf_legal
-       
+        auxRedeem1.r = redInput.td;//第三步中r为td
         auxRedeem2.clist1 = new BN128.G1Point[](auxRedeem2.N);
         auxRedeem2.clist2 = new BN128.G1Point[](auxRedeem2.N);
         for (uint256 i = 0; i < auxRedeem2.N; i++) {
@@ -290,6 +268,7 @@ contract User{
             auxRedeem2.clist2[i] = cred.Y.add(mixSC.getEscPool()[i].cesc.Y.neg());
         }
 
+        //emit PrintClist(auxRedeem2.clist1, auxRedeem2.clist2);
 
         auxRedeem2.rB = uint(keccak256(abi.encodePacked(block.difficulty, block.timestamp, msg.sender))).mod();
         auxRedeem2.rouk = new uint256[](auxRedeem1.m);
@@ -318,10 +297,21 @@ contract User{
         auxRedeem2.Gk1 = new BN128.G1Point[](auxRedeem1.m);
         auxRedeem2.Gk2 = new BN128.G1Point[](auxRedeem1.m);
         {
+            auxRedeem2.a = new uint256[](auxRedeem1.m.mul(auxRedeem1.n));
+            // uint256[] memory a = new uint256[](auxInput.m.mul(auxInput.n));
+            for(uint256 j = 0; j < auxRedeem1.m; j++) {
+                uint256 tmpSum = 0;
+                for(uint256 i = 1; i < auxRedeem1.n; i++) {
+                    auxRedeem2.a[j*auxRedeem1.n+i] =  uint(keccak256(abi.encodePacked(j, i, msg.sender, block.timestamp))).mod();
+                    tmpSum = tmpSum.add(auxRedeem2.a[j*auxRedeem1.n+i]);
+                }
+                auxRedeem2.a[j*auxRedeem1.n + 0] = tmpSum.neg();
+            }
+
             //生成p_i_k(很复杂)
             uint256[] memory p_i_k = new uint256[](auxRedeem2.N*auxRedeem1.m); //N行m列
             for(uint256 i = 0; i < auxRedeem2.N; i++) {
-                uint256[] memory tmp_p_i = Primitives.GetP(auxRedeem1.l, i, auxRedeem1.m);
+                uint256[] memory tmp_p_i = Primitives.GetP(auxRedeem1.l, i, auxRedeem1.m, auxRedeem2.a);
                 for(uint256 j = 0; j < auxRedeem1.m; j++) {
                     p_i_k[i*auxRedeem1.m+j] = tmp_p_i[j];
                 }
@@ -356,8 +346,7 @@ contract User{
     // emit RequestRedeemStep3_1(auxRedeem2, auxProcessRed);
     emit RequestRedeemPrint("step2 near 356 is OK");
         // //生成A,C,D
-        // {
-            uint256[] memory a_R1ProofPart1;
+            // uint256[] memory a_R1ProofPart1;
             uint256[3] memory rArCrD;
             AuxR1ProofPart1Input memory auxR1Part1;
             auxR1Part1.g = auxRedeem2.newG_ck;
@@ -367,7 +356,8 @@ contract User{
             auxR1Part1.r = auxRedeem2.rB;
             auxR1Part1.m = auxRedeem1.m;
             auxR1Part1.n = auxRedeem1.n;
-            (auxProcessRed.A,auxProcessRed.C,auxProcessRed.D,rArCrD, a_R1ProofPart1) = generateR1ProofPart1(
+            auxR1Part1.a = auxRedeem2.a;
+            (auxProcessRed.A,auxProcessRed.C,auxProcessRed.D,rArCrD) = generateR1ProofPart1(
                 // auxRedeem2.newG_ck, auxRedeem2.hs, auxProcessRed.B, auxRedeem2.delta, auxRedeem2.rB,auxRedeem1.m,auxRedeem1.n
                 auxR1Part1
                 );
@@ -398,7 +388,7 @@ contract User{
                 auxPart2Input.m = auxRedeem1.m;
                 auxPart2Input.n = auxRedeem1.n;
                 auxPart2Input.challenge_x = challenge_x;
-                auxPart2Input.a = a_R1ProofPart1;
+                auxPart2Input.a = auxRedeem2.a;
                 auxPart2Input.b = auxRedeem2.delta;
                 auxPart2Input.r = auxRedeem2.rB;
                 auxPart2Input.rArCrD = rArCrD;
@@ -415,9 +405,9 @@ contract User{
             for(uint256 i = 0; i < auxRedeem1.m; i++) {
                 auxProcessRed.tmpz = auxProcessRed.tmpz.add( auxRedeem2.rouk[i].mul(challenge_x.modExp(i)).mod() );
             }
-            auxProcessRed.z = auxRedeem1.r.mul(challenge_x.modExp(auxRedeem1.m)).mod();
-            auxProcessRed.z = auxProcessRed.z.sub(auxProcessRed.tmpz).mod();
-            emit RequestRedeemStep3_1(auxRedeem2, auxProcessRed);
+            auxProcessRed.z = auxRedeem1.r.mul(challenge_x.modExp(auxRedeem1.m)).sub(auxProcessRed.tmpz);
+            // auxProcessRed.z = auxProcessRed.z.sub().mod();
+            //emit RequestRedeemStep3_1(auxRedeem2, auxProcessRed);
             emit RequestRedeemPrint("step2 near 419 is OK");
             
             Verifier.SigmaProof memory proof_format;
@@ -458,11 +448,6 @@ contract User{
             input.k = redInput.k;
 
             mixSC.processRedeem(proof_format, aux_format, input);
-            
-
-        // }
-
-
     }
 
 struct AuxR1ProofPart1Input {
@@ -473,6 +458,7 @@ struct AuxR1ProofPart1Input {
     uint256 r;
     uint256 m;
     uint256 n;
+    uint256[] a; //随机数矩阵a
 }
 
 
@@ -501,25 +487,14 @@ struct AuxR1ProofPart1Tmp {
         BN128.G1Point memory,
         BN128.G1Point memory, 
         BN128.G1Point memory,
-        uint256[3] memory,
-        uint256[] memory
+        uint256[3] memory
         ) {
         AuxR1ProofPart1Tmp memory auxTmp;
         auxTmp.rA = uint(keccak256(abi.encodePacked(block.difficulty, msg.sender, block.timestamp))).mod();
         auxTmp.rC = uint(keccak256(abi.encodePacked(msg.sender, block.timestamp))).mod();
         auxTmp.rD = uint(keccak256(abi.encodePacked(block.difficulty, block.timestamp))).mod();
-        uint256[] memory a = new uint256[](auxInput.m.mul(auxInput.n));
-        for(uint256 j = 0; j < auxInput.m; j++) {
-            uint256 tmpSum = 0;
-            for(uint256 i = 1; i < auxInput.n; i++) {
-                a[j*auxInput.n+i] =  uint(keccak256(abi.encodePacked(j, i, msg.sender, block.timestamp))).mod();
-                tmpSum = tmpSum.add(a[j*auxInput.n+i]);
-            }
-            a[j*auxInput.n + 0] = tmpSum.neg();
-        }
-        
 
-        auxTmp.A = Primitives.commitBits(auxInput.g,auxInput.hs,a,auxTmp.rA);
+        auxTmp.A = Primitives.commitBits(auxInput.g,auxInput.hs, auxInput.a,auxTmp.rA);
         auxTmp.tmpC = new uint256[](auxInput.m.mul(auxInput.n));
         {
            uint256[3] memory base;
@@ -528,7 +503,7 @@ struct AuxR1ProofPart1Tmp {
             for(uint256 j = 0; j < auxInput.m; j++) {
                 for(uint256 i = 0; i < auxInput.n; i++) {
                     base[2] = base[0].sub(base[1].mul(auxInput.b[j*auxInput.n+i]));
-                    auxTmp.tmpC[j*auxInput.n+i] =  a[j*auxInput.n+i].mul(base[2]).mod();
+                    auxTmp.tmpC[j*auxInput.n+i] =  auxInput.a[j*auxInput.n+i].mul(base[2]).mod();
                 }
             }
         }
@@ -536,13 +511,13 @@ struct AuxR1ProofPart1Tmp {
         auxTmp.tmpD = new uint256[](auxInput.m.mul(auxInput.n));
         for(uint256 j = 0; j < auxInput.m; j++) {
             for(uint256 i = 0; i < auxInput.n; i++) {
-                auxTmp.tmpD[j*auxInput.n+i] =  a[j*auxInput.n+i].mul(a[j*auxInput.n+i]).mod().neg();
+                auxTmp.tmpD[j*auxInput.n+i] =  auxInput.a[j*auxInput.n+i].mul(auxInput.a[j*auxInput.n+i]).mod().neg();
             }
         }
         auxTmp.D = Primitives.commitBits(auxInput.g, auxInput.hs, auxTmp.tmpD, auxTmp.rD);
         uint256[3] memory rArCrD = [auxTmp.rA, auxTmp.rC, auxTmp.rD];  
         
-        return (auxTmp.A, auxTmp.C, auxTmp.D, rArCrD, a);
+        return (auxTmp.A, auxTmp.C, auxTmp.D, rArCrD);
     }
 
 
@@ -573,12 +548,12 @@ struct AuxR1ProofPart2Input {
     ) {
         uint[] memory f = new uint256[](auxInput.m.mul(auxInput.n));
         for(uint256 j = 0; j < auxInput.m; j++) {
-            for(uint256 i = 0; i < auxInput.n; i++) {
-                f[j*auxInput.n + i] = auxInput.b[j*auxInput.n+i].mul(auxInput.challenge_x).mod().add(auxInput.a[j*auxInput.n+i]);
+            for(uint256 i = 1; i < auxInput.n; i++) {
+                f[j*auxInput.n + i] = (auxInput.b[j*auxInput.n+i].mul(auxInput.challenge_x)).mod().add(auxInput.a[j*auxInput.n+i]).mod();
             }
         }
         uint256 zA = auxInput.r.mul(auxInput.challenge_x).add(auxInput.rArCrD[0]).mod();
-        uint256 zC = auxInput.rArCrD[1].mul(auxInput.challenge_x).add(auxInput.rArCrD[2]);
+        uint256 zC = auxInput.rArCrD[1].mul(auxInput.challenge_x).add(auxInput.rArCrD[2]).mod();
         return (f, zA, zC);
     }
 

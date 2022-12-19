@@ -35,14 +35,7 @@ library Primitives {
         // BN128.G1Point memory pk//公钥
         TwistedElgammalParams memory twElParams
     ) public view returns (BN128.G1Point memory, BN128.G1Point memory) {
-        // BN128.G1Point memory A = pk.mul(a);
-        // BN128.G1Point memory tmp = g.mul(a);
-        // BN128.G1Point memory B = tmp.add(h.mul(b));
-        // uint256 e = uint256(keccak256(abi.encode(A, B))).mod();
-        // uint256 z1 = a.add(e.mul(r));
-        // uint256 z2 = b.add(e.mul(v));
-        // return (A,B,z1,z2);
-
+        
         BN128.G1Point memory X = twElParams.pk.mul(twElParams.k);
         BN128.G1Point memory Y = twElParams.g.mul(twElParams.k).add(twElParams.h.mul(twElParams.v));
         return (X, Y);
@@ -187,9 +180,10 @@ library Primitives {
 
     //封装好的获取P_i的函数
     //只需提供l和i即可
-    function GetP(uint256 l, uint256 i, uint m) public view returns (uint256[] memory){
+    function GetP(uint256 l, uint256 i, uint m, uint256[] memory a) public view returns (uint256[] memory){
         // require(l>=i,"i must less than or equal to l");
-        return getP(i,getDelta(convertToNal(l,2,m),m),getMatricesA(m),m);
+        // return getP(i,getDelta(convertToNal(l,2,m),m),getMatricesA(m),m); //需要修改为之前使用的固定的a[]
+        return getP(i,getDelta(convertToNal(l,2,m),m), a,m);
     }
 
 
