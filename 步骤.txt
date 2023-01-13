@@ -1,0 +1,24 @@
+1、MixCT can be deployed and tested using [Truffle](https://www.trufflesuite.com/truffle) and [Ganache](https://github.com/trufflesuite/ganache).
+
+2、Install Node.js, tested with version v16.18.1.
+
+3、Note: If an error occurs, please try to run with administrator privileges.
+Make sure to execute in the current directory.
+Run the following 3 commands:
+
+npm install -g truffle
+npm install -g ganache
+npm install
+
+
+4、Running Tests. Run the following 2 commands:
+
+//open a command window
+
+ganache -a 3 -e 3000 -p 8545 --miner.defaultGasPrice 0 --miner.blockGasLimit 30000000000 --miner.callGasLimit 30000000000
+
+
+//Open another command window
+//Make sure to execute in the current directory
+
+truffle test
